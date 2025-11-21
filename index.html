@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roaring River Dashboard – Plug & Play</title>
+<style>
+  body { margin:0; font-family:'Arial Black', sans-serif; background:#0288d1; color:#fff; text-align:center; }
+  .container { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; padding:20px; }
+  h1 { font-size:3em; margin:0 0 20px 0; text-shadow:2px 2px #000; }
+  .data-box { background: rgba(0,0,0,0.4); border-radius:20px; width:80%; max-width:1000px; padding:20px; margin-bottom:20px; box-shadow:0 0 20px rgba(0,0,0,0.5); }
+  .bar-container { background: rgba(255,255,255,0.2); border-radius:15px; height:60px; margin:15px 0; overflow:hidden; }
+  .bar { height:100%; text-align:center; line-height:60px; font-size:2em; font-weight:bold; transition: width 1s; }
+  .condition { font-size:2em; margin:10px 0; }
+  .icon { font-size:5em; margin:10px 0; }
+  .timestamp { font-size:1.2em; margin-top:10px; color:#eee; }
+  .safe { background:green; }
+  .caution { background:orange; }
+  .danger { background:red; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Roaring River – Gauge 07050152</h1>
+  <div class="data-box">
+    <div id="height-bar" class="bar-container"><div id="height" class="bar safe">-- ft</div></div>
+    <div id="discharge-bar" class="bar-container"><div id="discharge" class="bar safe">Discharge: -- cfs</div></div>
+    <div id="condition" class="condition">Conditions: --</div>
+    <div id="fishing" class="condition">Fishing: --</div>
+    <div id="canoe" class="condition">Canoeing: --</div>
+    <div id="icon" class="icon">🌊</div>
+    <div id="time" class="timestamp">Last update: --</div>
+  </div>
+</div>
+
+<script>
+function getMoherpConditions(discharge) {
+  if (discharge < 30) return {cond:"Poor", fishing:"0-2 fish", canoe:"Not recommended", icon:"❌", style:"danger", width:20};
+  else if (discharge < 80) return {cond:"Low", fishing:"3-6 fish", canoe:"Float with care", icon:"⚠️", style:"caution", width:40};
+  else if (discharge < 150) return {cond:"Good", fishing:"7-15 fish", canoe:"Safe for normal trips", icon:"🛶", style:"safe", width:60};
+  else if (discharge < 300) return {cond:"High", fishing:"7-15 fish", canoe:"Experienced paddlers only", icon:"⚠️❌", style:"caution", width:80};
+  else return {cond:"Flood", fishing:"0 fish", canoe:"Avoid river", icon:"🌊❌", style:"danger", width:100};
+}
+
+async function fetchRiverData() {
+  try {
+    const response = await fetch('/api/river');
+    const json = await response.json();
+    const ts = json.value.timeSeries;
+
+    let height = null, discharge = null, time = null;
+    ts.forEach(series => {
+      const variable = series.variable.variableCode[0].value;
+      const values = series.values[0].value;
+      const latest = values[values.length-1];
+      const v = parseFloat(latest.value);
+
+      if (variable === '00065') { height = v; time = latest.dateTime; }
+      if (variable === '00060') discharge = v;
+    });
+
+    if(height !== null && discharge !== null && time !== null) updateDashboard(height, discharge, time);
+    else throw new Error('Missing data');
+
+  } catch(err) {
+    console.error(err);
+    document.getElementById('height').textContent = "Error";
+    document.getElementById('discharge').textContent = "Error";
+    document.getElementById('condition').textContent = "";
+    document.getElementById('fishing').textContent = "";
+    document.getElementById('canoe').textContent = "Unable to load data";
+    document.getElementById('icon').textContent = "❌";
+    document.getElementById('time').textContent = "";
+  }
+}
+
+function updateDashboard(height, discharge, time) {
+  document.getElementById('height').textContent = height.toFixed(2)+' ft';
+  document.getElementById('discharge').textContent = 'Discharge: '+discharge.toFixed(0)+' cfs';
+  document.getElementById('time').textContent = 'Last update: '+new Date(time).toLocaleString();
+
+  const cond = getMoherpConditions(discharge);
+
+  const heightBar = document.getElementById('height');
+  const dischargeBar = document.getElementById('discharge');
+  heightBar.style.width = cond.width + '%';
+  dischargeBar.style.width = cond.width + '%';
+  heightBar.className = 'bar ' + cond.style;
+  dischargeBar.className = 'bar ' + cond.style;
+
+  document.getElementById('condition').textContent = "Conditions: "+cond.cond;
+  document.getElementById('fishing').textContent = "Fishing: "+cond.fishing;
+  document.getElementById('canoe').textContent = "Canoeing: "+cond.canoe;
+  document.getElementById('icon').textContent = cond.icon;
+  document.getElementById('icon').className = 'icon '+cond.style;
+}
+
+// Initial fetch + refresh every 2 min
+fetchRiverData();
+setInterval(fetchRiverData, 120000);
+</script>
+</body>
+</html>
